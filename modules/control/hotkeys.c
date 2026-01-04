@@ -42,6 +42,7 @@
 #include <vlc_executor.h>
 #include <vlc_vout_osd.h>
 #include "math.h"
+#include "../video_output/opengl/vout_helper.h"
 
 struct intf_sys_t
 {
@@ -928,6 +929,54 @@ VOUT_ACTION_HANDLER(Projection)
     var_ToggleBool(vout, "override-projection");
 }
 
+VOUT_ACTION_HANDLER(VRControls)
+{
+    /* VR controls require access to the OpenGL display context.
+     * We use variables as an interface between hotkeys and the display. */
+    
+    vlc_player_t *player = vlc_playlist_GetPlayer(intf->p_sys->playlist);
+    
+    switch (action_id)
+    {
+        case ACTIONID_VR_ZOOM_IN:
+        {
+            /* Trigger zoom adjustment via variable callback */
+            var_SetFloat(vout, "vr-zoom-delta", +0.1f);
+            
+            /* Display OSD message */
+            vlc_player_osd_Message(player, _("VR Zoom: +10%%"));
+            break;
+        }
+        case ACTIONID_VR_ZOOM_OUT:
+        {
+            var_SetFloat(vout, "vr-zoom-delta", -0.1f);
+            vlc_player_osd_Message(player, _("VR Zoom: -10%%"));
+            break;
+        }
+        case ACTIONID_VR_IPD_INCREASE:
+        {
+            var_SetFloat(vout, "vr-ipd-delta", +0.01f);
+            vlc_player_osd_Message(player, _("VR IPD: increase"));
+            break;
+        }
+        case ACTIONID_VR_IPD_DECREASE:
+        {
+            var_SetFloat(vout, "vr-ipd-delta", -0.01f);
+            vlc_player_osd_Message(player, _("VR IPD: decrease"));
+            break;
+        }
+        case ACTIONID_VR_RESET:
+        {
+            var_SetFloat(vout, "vr-zoom", 1.0f);
+            var_SetFloat(vout, "vr-ipd-offset", 0.0f);
+            vlc_player_osd_Message(player, _("VR settings reset"));
+            break;
+        }
+        default:
+            vlc_assert_unreachable();
+    }
+}
+
 /****************
  * action table *
  ****************/
@@ -1008,6 +1057,7 @@ static struct vlc_action const actions[] =
     VLC_ACTION_VOUT(DEINTERLACE, DEINTERLACE_MODE, Deinterlace)
     VLC_ACTION_VOUT(SUBPOS_DOWN, SUBTITLE_TEXT_SCALE_UP, SubtitleDisplay)
     VLC_ACTION_VOUT(PROJECTION_TOGGLE, PROJECTION_TOGGLE, Projection)
+	VLC_ACTION_VOUT(VR_ZOOM_IN, VR_RESET, VRControls)
     /* null action */
     { .type = NULL_ACTION }
 
