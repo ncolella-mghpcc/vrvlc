@@ -108,6 +108,11 @@ struct vlc_gl_renderer
     video_projection_mode_t projection_mode;
     vlc_stereoscopic_mode_t stereo_mode;
     video_multiview_mode_t multiview_mode;
+
+    /* VR-specific parameters */
+    float f_ipd_offset;        /* IPD adjustment: -1.0 to 1.0 */
+    float f_vr_zoom;           /* VR zoom level: 0.1 to 2.0 */
+    bool b_vr_mode;            /* True if in VR mode (SBS equirectangular) */
 };
 
 vlc_gl_filter_open_fn vlc_gl_renderer_Open;
@@ -115,6 +120,42 @@ vlc_gl_filter_open_fn vlc_gl_renderer_Open;
 int
 vlc_gl_renderer_SetViewpoint(struct vlc_gl_renderer *renderer,
                              const vlc_viewpoint_t *p_vp);
+
+/**
+ * Set IPD (interpupillary distance) adjustment for VR stereo rendering
+ * \param renderer the renderer
+ * \param ipd_offset adjustment from -1.0 (eyes closer) to 1.0 (eyes further)
+ * \return VLC_SUCCESS or VLC_EINVAL if out of range
+ */
+int
+vlc_gl_renderer_SetIPD(struct vlc_gl_renderer *renderer, float ipd_offset);
+
+/**
+ * Set zoom level for VR mode
+ * \param renderer the renderer
+ * \param zoom zoom factor (0.1 to 2.0, where 1.0 = 100%)
+ * \return VLC_SUCCESS or VLC_EINVAL if out of range
+ */
+int
+vlc_gl_renderer_SetVRZoom(struct vlc_gl_renderer *renderer, float zoom);
+
+/**
+ * Adjust VR zoom by a delta amount
+ * \param renderer the renderer
+ * \param delta amount to change zoom (positive = zoom in, negative = zoom out)
+ * \return VLC_SUCCESS or VLC_EINVAL
+ */
+int
+vlc_gl_renderer_AdjustVRZoom(struct vlc_gl_renderer *renderer, float delta);
+
+/**
+ * Adjust IPD by a delta amount
+ * \param renderer the renderer
+ * \param delta amount to change IPD
+ * \return VLC_SUCCESS or VLC_EINVAL
+ */
+int
+vlc_gl_renderer_AdjustIPD(struct vlc_gl_renderer *renderer, float delta);
 
 #ifdef __cplusplus
 }

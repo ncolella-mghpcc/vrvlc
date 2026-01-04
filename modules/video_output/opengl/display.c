@@ -89,6 +89,11 @@ typedef struct vout_display_sys_t
         PFNGLFLUSHPROC Flush;
     } vt;
     vlc_viewpoint_t viewpoint;
+    
+    /* VR controls - ADD THIS BLOCK */
+    struct {
+        bool enabled;  /* True when in VR mode (SBS equirectangular) */
+    } vr;
 } vout_display_sys_t;
 
 /* Display callbacks */
@@ -104,6 +109,102 @@ static int SetViewpoint(vout_display_t *vd, const vlc_viewpoint_t *vp)
         return ret;
 
     sys->viewpoint = *vp;
+    return VLC_SUCCESS;
+}
+
+/**
+ * Callback for VR zoom delta adjustment
+ */
+static int VRZoomDeltaCallback(vlc_object_t *obj, char const *var,
+                               vlc_value_t oldval, vlc_value_t newval, void *data)
+{
+    VLC_UNUSED(obj); VLC_UNUSED(var); VLC_UNUSED(oldval);
+    vout_display_t *vd = data;
+    vout_display_sys_t *sys = vd->sys;
+    
+    if (!sys->vr.enabled)
+        return VLC_SUCCESS;
+    
+    float delta = newval.f_float;
+    
+    if (vlc_gl_MakeCurrent(sys->gl) == VLC_SUCCESS)
+    {
+        vout_display_opengl_AdjustVRZoom(sys->vgl, delta);
+        vlc_gl_ReleaseCurrent(sys->gl);
+    }
+    
+    return VLC_SUCCESS;
+}
+
+/**
+ * Callback for VR IPD delta adjustment
+ */
+static int VRIPDDeltaCallback(vlc_object_t *obj, char const *var,
+                              vlc_value_t oldval, vlc_value_t newval, void *data)
+{
+    VLC_UNUSED(obj); VLC_UNUSED(var); VLC_UNUSED(oldval);
+    vout_display_t *vd = data;
+    vout_display_sys_t *sys = vd->sys;
+    
+    if (!sys->vr.enabled)
+        return VLC_SUCCESS;
+    
+    float delta = newval.f_float;
+    
+    if (vlc_gl_MakeCurrent(sys->gl) == VLC_SUCCESS)
+    {
+        vout_display_opengl_AdjustIPD(sys->vgl, delta);
+        vlc_gl_ReleaseCurrent(sys->gl);
+    }
+    
+    return VLC_SUCCESS;
+}
+
+/**
+ * Callback for VR zoom absolute value
+ */
+static int VRZoomCallback(vlc_object_t *obj, char const *var,
+                          vlc_value_t oldval, vlc_value_t newval, void *data)
+{
+    VLC_UNUSED(obj); VLC_UNUSED(var); VLC_UNUSED(oldval);
+    vout_display_t *vd = data;
+    vout_display_sys_t *sys = vd->sys;
+    
+    if (!sys->vr.enabled)
+        return VLC_SUCCESS;
+    
+    float zoom = newval.f_float;
+    
+    if (vlc_gl_MakeCurrent(sys->gl) == VLC_SUCCESS)
+    {
+        vout_display_opengl_SetVRZoom(sys->vgl, zoom);
+        vlc_gl_ReleaseCurrent(sys->gl);
+    }
+    
+    return VLC_SUCCESS;
+}
+
+/**
+ * Callback for VR IPD offset absolute value
+ */
+static int VRIPDOffsetCallback(vlc_object_t *obj, char const *var,
+                               vlc_value_t oldval, vlc_value_t newval, void *data)
+{
+    VLC_UNUSED(obj); VLC_UNUSED(var); VLC_UNUSED(oldval);
+    vout_display_t *vd = data;
+    vout_display_sys_t *sys = vd->sys;
+    
+    if (!sys->vr.enabled)
+        return VLC_SUCCESS;
+    
+    float ipd_offset = newval.f_float;
+    
+    if (vlc_gl_MakeCurrent(sys->gl) == VLC_SUCCESS)
+    {
+        vout_display_opengl_SetIPD(sys->vgl, ipd_offset);
+        vlc_gl_ReleaseCurrent(sys->gl);
+    }
+    
     return VLC_SUCCESS;
 }
 
@@ -282,6 +383,29 @@ static int Open(vout_display_t *vd,
     if (sys->vgl == NULL)
         goto error;
 
+    /* Initialize VR mode detection and controls */
+    sys->vr.enabled = (fmt->projection_mode == PROJECTION_MODE_EQUIRECTANGULAR &&
+                       fmt->multiview_mode == MULTIVIEW_STEREO_SBS);
+    
+    if (sys->vr.enabled)
+    {
+        vlc_window_t *surface = vd->cfg->window;
+        
+        /* Create VR control variables */
+        var_Create(surface, "vr-zoom-delta", VLC_VAR_FLOAT | VLC_VAR_ISCOMMAND);
+        var_Create(surface, "vr-ipd-delta", VLC_VAR_FLOAT | VLC_VAR_ISCOMMAND);
+        var_Create(surface, "vr-zoom", VLC_VAR_FLOAT | VLC_VAR_ISCOMMAND);
+        var_Create(surface, "vr-ipd-offset", VLC_VAR_FLOAT | VLC_VAR_ISCOMMAND);
+        
+        /* Add callbacks to watch for variable changes */
+        var_AddCallback(surface, "vr-zoom-delta", VRZoomDeltaCallback, vd);
+        var_AddCallback(surface, "vr-ipd-delta", VRIPDDeltaCallback, vd);
+        var_AddCallback(surface, "vr-zoom", VRZoomCallback, vd);
+        var_AddCallback(surface, "vr-ipd-offset", VRIPDOffsetCallback, vd);
+        
+        msg_Dbg(vd, "VR mode enabled: 47° FOV for AR glasses");
+    }
+
     sys->viewpoint = vd->cfg->viewpoint;
 
     vd->info.subpicture_chromas = spu_chromas;
@@ -302,6 +426,23 @@ error:
 static void Close(vout_display_t *vd)
 {
     vout_display_sys_t *sys = vd->sys;
+    
+    /* Clean up VR variable callbacks if enabled */
+    if (sys->vr.enabled)
+    {
+        vlc_window_t *surface = vd->cfg->window;
+        
+        var_DelCallback(surface, "vr-zoom-delta", VRZoomDeltaCallback, vd);
+        var_DelCallback(surface, "vr-ipd-delta", VRIPDDeltaCallback, vd);
+        var_DelCallback(surface, "vr-zoom", VRZoomCallback, vd);
+        var_DelCallback(surface, "vr-ipd-offset", VRIPDOffsetCallback, vd);
+        
+        var_Destroy(surface, "vr-zoom-delta");
+        var_Destroy(surface, "vr-ipd-delta");
+        var_Destroy(surface, "vr-zoom");
+        var_Destroy(surface, "vr-ipd-offset");
+    }
+    
     vlc_gl_t *gl = sys->gl;
 
     vlc_gl_MakeCurrent (gl);

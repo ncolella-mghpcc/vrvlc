@@ -93,4 +93,23 @@ int vout_display_opengl_ChangeProjection(vout_display_opengl_t *vgl,
 int vout_display_opengl_ChangeStereoMode(vout_display_opengl_t *vgl,
                                          vlc_stereoscopic_mode_t projection);
 
+/**
+ * Set VR zoom level
+ */
+int vout_display_opengl_SetVRZoom(vout_display_opengl_t *vgl, float zoom);
+
+/**
+ * Adjust VR zoom by delta
+ */
+int vout_display_opengl_AdjustVRZoom(vout_display_opengl_t *vgl, float delta);
+
+/**
+ * Set IPD offset
+ */
+int vout_display_opengl_SetIPD(vout_display_opengl_t *vgl, float ipd_offset);
+
+/**
+ * Adjust IPD by delta
+ */
+int vout_display_opengl_AdjustIPD(vout_display_opengl_t *vgl, float delta);
 #endif

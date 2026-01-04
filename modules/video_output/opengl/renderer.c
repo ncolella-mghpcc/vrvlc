@@ -102,10 +102,21 @@ static void getViewpointMatrixes(struct vlc_gl_renderer *renderer,
 
 }
 
+/* VR mode constants */
+#define VR_DEFAULT_FOV_DEGREES 47.0f  /* AR glasses FOV */
+#define VR_MIN_ZOOM 0.1f
+#define VR_MAX_ZOOM 2.0f
+#define VR_DEFAULT_ZOOM 1.0f
+#define VR_ZOOM_STEP 0.1f
+#define IPD_MIN -1.0f
+#define IPD_MAX 1.0f
+#define IPD_STEP 0.01f
+
 static void
 InitStereoMatrix(GLfloat matrix_out[static 3*3],
                  vlc_stereoscopic_mode_t stereo_mode,
-                 video_multiview_mode_t multiview_mode)
+                 video_multiview_mode_t multiview_mode,
+                 float ipd_offset)
 {
     /*
      * The stereo matrix transforms 2D pictures coordinates to crop the
@@ -145,7 +156,9 @@ InitStereoMatrix(GLfloat matrix_out[static 3*3],
              */
             matrix_out[COL(0) + ROW(0)] = 0.5;
             if (stereo_mode == VIDEO_STEREO_OUTPUT_RIGHT_ONLY)
-                matrix_out[COL(2) + ROW(0)] = 0.5;
+                matrix_out[COL(2) + ROW(0)] = 0.5 + ipd_offset;
+            else
+                matrix_out[COL(2) + ROW(0)] = ipd_offset;
             break;
         case MULTIVIEW_STEREO_TB:
             /*
@@ -170,7 +183,9 @@ InitStereoMatrix(GLfloat matrix_out[static 3*3],
              */
             matrix_out[COL(1) + ROW(1)] = 0.5;
             if (stereo_mode == VIDEO_STEREO_OUTPUT_RIGHT_ONLY)
-                matrix_out[COL(2) + ROW(1)] = 0.5;
+                matrix_out[COL(2) + ROW(1)] = 0.5 + ipd_offset;
+            else
+                matrix_out[COL(2) + ROW(1)] = ipd_offset;
             break;
         default:
             break;
@@ -367,6 +382,77 @@ vlc_gl_renderer_SetViewpoint(struct vlc_gl_renderer *renderer,
     getViewpointMatrixes(renderer, renderer->projection_mode);
 
     return VLC_SUCCESS;
+}
+
+int
+vlc_gl_renderer_SetIPD(struct vlc_gl_renderer *renderer, float ipd_offset)
+{
+    /* Clamp to reasonable range */
+    if (ipd_offset < IPD_MIN || ipd_offset > IPD_MAX)
+        return VLC_EINVAL;
+    
+    renderer->f_ipd_offset = ipd_offset;
+    
+    /* Rebuild stereo matrix with new IPD */
+    InitStereoMatrix(renderer->var.StereoMatrix, 
+                     renderer->stereo_mode, 
+                     renderer->multiview_mode,
+                     renderer->f_ipd_offset);
+    
+    return VLC_SUCCESS;
+}
+
+int
+vlc_gl_renderer_SetVRZoom(struct vlc_gl_renderer *renderer, float zoom)
+{
+    if (zoom < VR_MIN_ZOOM || zoom > VR_MAX_ZOOM)
+        return VLC_EINVAL;
+    
+    if (!renderer->b_vr_mode)
+        return VLC_EGENERIC;
+    
+    renderer->f_vr_zoom = zoom;
+    
+    /* For 47-degree AR glasses viewing 180-degree content:
+     * We need to calculate FOV based on zoom level
+     * Base FOV is 47 degrees, zoom adjusts what portion of the 180° we see
+     * zoom = 1.0 means show 47 degrees worth
+     * zoom = 2.0 means show 23.5 degrees worth (more zoomed in)
+     * zoom = 0.5 means show 94 degrees worth (zoomed out)
+     */
+    float base_fov = VR_DEFAULT_FOV_DEGREES * M_PI / 180.0f;
+    renderer->f_fovx = base_fov / zoom;
+    
+    /* Clamp to reasonable limits */
+    float max_fov = 120.0f * M_PI / 180.0f;
+    float min_fov = 20.0f * M_PI / 180.0f;
+    if (renderer->f_fovx > max_fov)
+        renderer->f_fovx = max_fov;
+    if (renderer->f_fovx < min_fov)
+        renderer->f_fovx = min_fov;
+    
+    UpdateFOVy(renderer);
+    UpdateZ(renderer);
+    getViewpointMatrixes(renderer, renderer->projection_mode);
+    
+    return VLC_SUCCESS;
+}
+
+int
+vlc_gl_renderer_AdjustVRZoom(struct vlc_gl_renderer *renderer, float delta)
+{
+    if (!renderer->b_vr_mode)
+        return VLC_EGENERIC;
+    
+    float new_zoom = renderer->f_vr_zoom + delta;
+    return vlc_gl_renderer_SetVRZoom(renderer, new_zoom);
+}
+
+int
+vlc_gl_renderer_AdjustIPD(struct vlc_gl_renderer *renderer, float delta)
+{
+    float new_ipd = renderer->f_ipd_offset + delta;
+    return vlc_gl_renderer_SetIPD(renderer, new_ipd);
 }
 
 static void
@@ -890,9 +976,28 @@ vlc_gl_renderer_Open(struct vlc_gl_filter *filter,
         free(renderer);
         return ret;
     }
+	
+	/* Initialize VR-specific parameters */
+    renderer->f_ipd_offset = 0.0f;  /* Start centered */
+    renderer->f_vr_zoom = VR_DEFAULT_ZOOM;
+    
+    /* Detect VR mode: SBS equirectangular projection */
+    renderer->b_vr_mode = (renderer->projection_mode == PROJECTION_MODE_EQUIRECTANGULAR &&
+                          renderer->multiview_mode == MULTIVIEW_STEREO_SBS);
+    
+    if (renderer->b_vr_mode)
+    {
+        /* Set optimal FOV for 47-degree AR glasses */
+        renderer->f_fovx = VR_DEFAULT_FOV_DEGREES * M_PI / 180.0f;
+        UpdateFOVy(renderer);
+        UpdateZ(renderer);
+    }
 
-    InitStereoMatrix(renderer->var.StereoMatrix, renderer->stereo_mode, renderer->multiview_mode);
-
+    InitStereoMatrix(renderer->var.StereoMatrix, 
+                     renderer->stereo_mode, 
+                     renderer->multiview_mode,
+                     renderer->f_ipd_offset);
+					 
     getViewpointMatrixes(renderer, renderer->projection_mode);
 
     vt->GenVertexArrays(1, &renderer->vertex_array_object);

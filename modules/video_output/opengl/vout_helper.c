@@ -478,6 +478,38 @@ void vout_display_opengl_SetOutputSize(vout_display_opengl_t *vgl,
     (void) ret;
 }
 
+int vout_display_opengl_SetVRZoom(vout_display_opengl_t *vgl, float zoom)
+{
+    if (!vgl || !vgl->renderer)
+        return VLC_EGENERIC;
+    
+    return vlc_gl_renderer_SetVRZoom(vgl->renderer, zoom);
+}
+
+int vout_display_opengl_AdjustVRZoom(vout_display_opengl_t *vgl, float delta)
+{
+    if (!vgl || !vgl->renderer)
+        return VLC_EGENERIC;
+    
+    return vlc_gl_renderer_AdjustVRZoom(vgl->renderer, delta);
+}
+
+int vout_display_opengl_SetIPD(vout_display_opengl_t *vgl, float ipd_offset)
+{
+    if (!vgl || !vgl->renderer)
+        return VLC_EGENERIC;
+    
+    return vlc_gl_renderer_SetIPD(vgl->renderer, ipd_offset);
+}
+
+int vout_display_opengl_AdjustIPD(vout_display_opengl_t *vgl, float delta)
+{
+    if (!vgl || !vgl->renderer)
+        return VLC_EGENERIC;
+    
+    return vlc_gl_renderer_AdjustIPD(vgl->renderer, delta);
+}
+
 void vout_display_opengl_Viewport(vout_display_opengl_t *vgl, int x, int y,
                                   unsigned width, unsigned height)
 {
