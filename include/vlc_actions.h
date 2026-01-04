@@ -263,6 +263,12 @@ typedef enum vlc_action_id {
     /* Combo Actions */
     ACTIONID_COMBO_VOL_FOV_DOWN,
     ACTIONID_COMBO_VOL_FOV_UP,
+	/* VR-specific actions */
+    ACTIONID_VR_ZOOM_IN,
+    ACTIONID_VR_ZOOM_OUT,
+    ACTIONID_VR_IPD_INCREASE,
+    ACTIONID_VR_IPD_DECREASE,
+    ACTIONID_VR_RESET,
 
     ACTIONID_PROJECTION_TOGGLE,
 } vlc_action_id_t;
